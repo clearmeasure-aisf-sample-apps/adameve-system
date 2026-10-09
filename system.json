@@ -110,6 +110,13 @@
       "capabilities": [
         "baseline"
       ]
+    },
+    {
+      "name": "prod",
+      "tier": "prod",
+      "capabilities": [
+        "baseline"
+      ]
     }
   ]
 }
