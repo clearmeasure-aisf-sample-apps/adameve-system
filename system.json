@@ -94,6 +94,16 @@
       "port": 8080,
       "healthPath": "/_healthcheck",
       "buildPath": "/_build"
+    },
+    {
+      "name": "dashboard",
+      "repository": "adameve-dashboard",
+      "hosting": "staticwebapp",
+      "healthPath": "/",
+      "buildPath": "/build-facts.json",
+      "environments": [
+        "tdd"
+      ]
     }
   ],
   "environments": [
