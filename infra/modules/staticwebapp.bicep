@@ -13,7 +13,10 @@
 // main.bicep passes system.staticLocation as the location (centralus unless set); any region has storage accounts.
 targetScope = 'resourceGroup'
 
+// At least one character each: a storage account's name has three or more.
+@minLength(1)
 param slug string
+@minLength(1)
 param environmentName string
 param location string
 param tags object
