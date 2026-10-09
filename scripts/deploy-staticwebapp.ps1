@@ -3,13 +3,20 @@
 
 <#
 .SYNOPSIS
-    Deploys the release's static site to the deployable's Static Web App, with the topology of the whole system.
+    Deploys the release's static site to the deployable's storage account (its static website), with the topology of
+    the whole system. adameve's own version of this file.
 
 .DESCRIPTION
     Step "Update deployable" of an Octopus project <slug>-<deployable> whose deployable is a static site (system.json
     hosting "staticwebapp": the health dashboard); octopus/projects.tf inlines this file. The package reference "site"
     is the zip the dashboard's release workflow pushed to the Octopus built-in feed (<slug>-<deployable>.<version>.zip,
     index.html at its root), extracted. The site is the one the stack created (stack output deployables[].staticSite).
+
+    This is adameve's own version of the kit's file (fleet.ownedTemplates of its registry file, Jeffrey's decision of
+    2026-10-09): for this system, hosting "staticwebapp" means "a static site", and the site is the static website of
+    a storage account (infra/modules/staticwebapp.bicep), because the subscription's 10 Free Static Web Apps are all
+    in use. What differs from the kit's file: part 3 below (the deployment), the name and the label of the site in the
+    runtime diagram, and no use of Node.js. Everything else is the kit's, as of its commit 1800a51.
 
     1. topology.json, written next to index.html (the contract is in the dashboard repository's README): every
        environment of system.json on main and, in each, the deployables whose nodes are known:
@@ -94,9 +101,13 @@
        verifies its SHA-256, renders every diagram in one Java process (layout engine smetana: no Graphviz; security
        profile SANDBOX) and checks that each SVG has every element the manifest names; a missing one fails the step.
        Java's output is logged as information; the download and the render are timed.
-    3. The deployment, with the Static Web Apps CLI and the site's deployment token. The token is read from Azure
-       when the step runs (the deploy identity may; the stack's deny settings keep everyone else from listing it),
-       reaches the CLI through an environment variable, and is never stored, printed or passed as an argument.
+    3. The deployment, with the Azure CLI as the tier's deploy identity, which the stack made a writer of the
+       account's blobs: no key (the account has shared keys switched off) and no deployment token. The step switches
+       the account's static website on (index.html, also for an address that is not there: Azure Resource Manager has
+       no property for it, so the first release does it and every later one confirms it), writes the files into the
+       container $web, each with Cache-Control: no-cache, and removes what the release no longer holds. The build's
+       precompressed copies (.br, .gz) are left out: a storage website serves a file as it is stored and does not
+       choose by Accept-Encoding.
     4. The proof: the site serves the topology this step wrote.
 
     The topology is a picture of system.json and the recorded nodes at the time of the deployment. After a change to
@@ -119,9 +130,37 @@ $ProgressPreference = 'SilentlyContinue'
 $env:AZURE_CORE_DISABLE_PROGRESS_BAR = 'true'
 $env:AZURE_BICEP_USE_BINARY_FROM_PATH = 'false'
 
-# The Static Web Apps CLI, at a fixed version: a promotion deploys with the tool the earlier environments used.
-$swaCliVersion = '2.0.10'
-$swaCliNodeVersion = 18
+function Get-StaticSiteName {
+    # The storage account of a static deployable in an environment: the rule of infra/modules/staticwebapp.bicep
+    # (st<slug><environment><deployable without hyphens>, at most 24 characters).
+    param([Parameter(Mandatory)] [string] $Slug, [Parameter(Mandatory)] [string] $Environment, [Parameter(Mandatory)] [string] $Deployable)
+    $account = "st$Slug$Environment$($Deployable.Replace('-', ''))"
+    if ($account.Length -gt 24) { $account = $account.Substring(0, 24) }
+    return $account
+}
+
+function Invoke-SiteStorage {
+    # One Azure CLI call against the account's data, as the signed-in deploy identity (no key). The CLI reports
+    # progress and notices on stderr, which Octopus would log as errors: what it writes is captured, and its exit
+    # code decides. Azure takes a moment to honour a new role assignment (the stack gave the identity its role on a
+    # new account minutes ago), so a refusal is asked again for five minutes.
+    param([Parameter(Mandatory)] [string] $What, [Parameter(Mandatory)] [string[]] $Arguments)
+    $deadline = (Get-Date).AddMinutes(5)
+    while ($true) {
+        $PSNativeCommandUseErrorActionPreference = $false
+        $output = @(az storage @Arguments --auth-mode login --only-show-errors 2>&1 | ForEach-Object { "$_" })
+        $code = $LASTEXITCODE
+        $PSNativeCommandUseErrorActionPreference = $true
+        if ($code -eq 0) { return $output }
+        $refused = @($output | Where-Object { $_ -match 'AuthorizationPermissionMismatch|AuthorizationFailure|not authorized to perform this operation' }).Count -gt 0
+        if (-not $refused -or (Get-Date) -gt $deadline) {
+            $output | Where-Object { $_.Trim() } | ForEach-Object { Write-Host "  $_" }
+            Fail-Step "The Azure CLI ended with exit code $code while it tried to ${What}; its output is above."
+        }
+        Write-Host "Azure does not let the deploy identity $What yet; asking again"
+        Start-Sleep -Seconds 20
+    }
+}
 
 # PlantUML, at a fixed version, for the runtime diagrams: the release jar of github.com/plantuml/plantuml, checked
 # against this SHA-256 before it runs. The dashboard finds the drawn elements by attributes of PlantUML's SVG that are
@@ -581,7 +620,8 @@ function ConvertTo-RuntimeDiagram {
     #   fd_<d>                      the Front Door endpoint of an App Service deployable
     #   app_<d>_primary, app_<d>_standby   its web apps
     #   sqldb                       the environment's Azure SQL database
-    #   swa_<d>                     the Static Web App of a static deployable (the dashboard)
+    #   swa_<d>                     the site of a static deployable (the dashboard): for adameve the static website
+    #                               of a storage account; the alias is the kit's, which the page finds it by
     #   dep_<d>_<n>                 a dependency of a deployable (system.json deployables[].dependencies), outside the
     #                               subscription; <n> is its name, written as <d> is
     #   own_<d>                     boundary: the runtime of a deployable with hosting "own", outside the subscription,
@@ -859,8 +899,8 @@ function ConvertTo-RuntimeDiagram {
         if ($region.roles.Contains('static')) {
             foreach ($static in $statics) {
                 $alias = "swa_$(Get-DeployableAlias $static.name)"
-                $site = "swa-$slug-$Environment-$($static.name)"
-                $lines.Add("      Container($alias, $(Get-Quoted $site), $(Get-Quoted "Static Web App: $($static.name)"), $(Get-Quoted $smallTileSlot))")
+                $site = Get-StaticSiteName -Slug $slug -Environment $Environment -Deployable ([string] $static.name)
+                $lines.Add("      Container($alias, $(Get-Quoted $site), $(Get-Quoted "Storage static website: $($static.name)"), $(Get-Quoted $smallTileSlot))")
                 $address = if ($DashboardUrl[$Environment]) { [string] $DashboardUrl[$Environment] } else { $null }
                 Add-Node ([ordered] @{ alias = $alias; qualifiedName = "sub.rg_tier.$($region.alias).$alias"; kind = 'staticsite'; deployable = [string] $static.name; name = $site; region = $region.name; regionAlias = $region.alias; url = $address })
             }
@@ -1146,17 +1186,6 @@ if (-not $folder -or -not (Test-Path -LiteralPath (Join-Path $folder 'index.html
 }
 $folder = (Resolve-Path -LiteralPath $folder).Path
 
-# The Static Web Apps CLI is a Node.js tool, run with npx: the worker container must bring both.
-foreach ($tool in 'node', 'npx') {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        Fail-Step "The worker container has no $tool, which the Static Web Apps CLI needs: use a worker-tools image with Node.js $swaCliNodeVersion or later (octopus/main.tf, worker_tools_image)."
-    }
-}
-$nodeVersion = ([string] (node --version)).Trim()
-if ([int] ($nodeVersion -replace '^v(\d+).*$', '$1') -lt $swaCliNodeVersion) {
-    Fail-Step "The worker container has Node.js $nodeVersion; the Static Web Apps CLI $swaCliVersion needs $swaCliNodeVersion or later (octopus/main.tf, worker_tools_image)."
-}
-
 $outputs = (az stack group show --name "stack-$slug-$environmentName" --resource-group $resourceGroup --output json | ConvertFrom-Json -AsHashtable).outputs
 $entry = @($outputs.deployables.value | Where-Object { $_.name -eq $name -and $_['hosting'] -eq 'staticwebapp' }) | Select-Object -First 1
 if (-not $entry) {
@@ -1333,43 +1362,29 @@ if ($runtimeProblem) {
     Fail-Step "The dashboard's runtime diagrams could not be made: $((@("$runtimeProblem" -split '\r?\n'))[0]) (the full output is above)"
 }
 
-# The deployment token of the site: read now, kept in this variable only, handed to the CLI through its environment
-# variable (never an argument, which a process list shows), and removed from the environment when the CLI has ended.
-$token = ([string] (az staticwebapp secrets list --name $staticSite --resource-group $resourceGroup --query properties.apiKey --only-show-errors --output tsv)).Trim()
-if (-not $token) {
-    Fail-Step "Azure returned no deployment token for $staticSite."
-}
-
-# The CLI (and npx before it) reports its progress on stderr, which Octopus would log as errors: everything it writes
-# is captured and shown as information, and its exit code decides. The CLI takes its working directory as the "app
-# location", which it searches for an api folder, workflow files and a configuration file: it runs in a folder of its
-# own that holds nothing but the site.
-Write-Host "Deploying $name $version to $staticSite with the Static Web Apps CLI $swaCliVersion (Node.js $nodeVersion)"
-$env:NO_COLOR = '1'
-$env:npm_config_update_notifier = 'false'
+# The deployment: the files into the storage account's static website, as the deploy identity, with no key. A copy
+# of the site without the build's precompressed files (.br, .gz) is what is written: a storage website serves a file
+# as it is stored, so nothing would ever ask for them.
+Write-Host "Deploying $name $version to the static website of storage account $staticSite"
 $stage = Join-Path ([IO.Path]::GetTempPath()) "site-$([Guid]::NewGuid().ToString('N'))"
-New-Item -ItemType Directory -Path $stage | Out-Null
-Copy-Item -LiteralPath $folder -Destination (Join-Path $stage 'site') -Recurse
-Push-Location -LiteralPath $stage
+Copy-Item -LiteralPath $folder -Destination $stage -Recurse
 try {
-    $env:SWA_CLI_DEPLOYMENT_TOKEN = $token
-    $PSNativeCommandUseErrorActionPreference = $false
-    $output = @(npx --yes "@azure/static-web-apps-cli@$swaCliVersion" deploy ./site --env production 2>&1 | ForEach-Object { "$_" })
-    $code = $LASTEXITCODE
+    $compressed = @(Get-ChildItem -LiteralPath $stage -File -Recurse | Where-Object { $_.Extension -in '.br', '.gz' })
+    $compressed | Remove-Item -Force
+    $files = @(Get-ChildItem -LiteralPath $stage -File -Recurse | ForEach-Object { [IO.Path]::GetRelativePath($stage, $_.FullName).Replace('\', '/') })
+    # index.html also for an address that is not there: the page is one document, and its views are fragments (#).
+    Invoke-SiteStorage -What "switch the static website of $staticSite on" -Arguments @('blob', 'service-properties', 'update', '--account-name', $staticSite, '--static-website', 'true', '--index-document', 'index.html', '--404-document', 'index.html', '--output', 'none') | Out-Null
+    Invoke-SiteStorage -What "write the site into $staticSite" -Arguments @('blob', 'upload-batch', '--account-name', $staticSite, '--destination', '$web', '--source', $stage, '--overwrite', 'true', '--content-cache-control', 'no-cache', '--no-progress', '--output', 'none') | Out-Null
+    $blobs = @((Invoke-SiteStorage -What "list the files of $staticSite" -Arguments @('blob', 'list', '--account-name', $staticSite, '--container-name', '$web', '--num-results', '*', '--query', '[].name', '--output', 'json')) -join "`n" | ConvertFrom-Json)
+    $left = @($blobs | Where-Object { $files -cnotcontains $_ })
+    foreach ($blob in $left) {
+        Invoke-SiteStorage -What "remove $blob from $staticSite" -Arguments @('blob', 'delete', '--account-name', $staticSite, '--container-name', '$web', '--name', $blob, '--output', 'none') | Out-Null
+    }
 }
 finally {
-    $PSNativeCommandUseErrorActionPreference = $true
-    Remove-Item -LiteralPath Env:SWA_CLI_DEPLOYMENT_TOKEN -ErrorAction SilentlyContinue
-    Pop-Location
     Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 }
-# Colour codes out, and the token too, should a tool ever echo it.
-$lines = @($output | ForEach-Object { ($_ -replace '\x1b\[[0-9;?]*[ -/]*[@-~]', '').Replace($token, '***').TrimEnd() } | Where-Object { $_ })
-$token = $null
-$lines | ForEach-Object { Write-Host "  $_" }
-if ($code -ne 0) {
-    Fail-Step "The Static Web Apps CLI ended with exit code $code while deploying $name $version to ${staticSite}; its output is above."
-}
+Write-Host "$($files.Count) file(s) written to $staticSite$(if ($compressed.Count -gt 0) { ", $($compressed.Count) precompressed copies left out" })$(if ($left.Count -gt 0) { ", $($left.Count) file(s) of an earlier release removed" })"
 
 # The proof that this release is what the site serves: the topology written above, by its time stamp. A deployment
 # takes the platform a moment to publish everywhere.
@@ -1387,7 +1402,7 @@ while ($true) {
     }
     if ($served -eq $topology.generated) { break }
     if ((Get-Date) -gt $deadline) {
-        Fail-Step "$url/topology.json does not serve the topology of this deployment ($($topology.generated)) after 5 minutes: it answered '$served'. The CLI's output is above."
+        Fail-Step "$url/topology.json does not serve the topology of this deployment ($($topology.generated)) after 5 minutes: it answered '$served'."
     }
     Write-Host "$url/topology.json answered '$served', not $($topology.generated) yet; retrying"
     Start-Sleep -Seconds 10
