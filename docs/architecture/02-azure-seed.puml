@@ -1,0 +1,44 @@
+@startuml 02-azure-seed
+!include _c4.iuml
+title Adam and woman in the garden of Eden | Phase 2: Azure seed (2026-10-08)
+
+Boundary(box, "Operator machine omarchy") {
+  Container(aiops, "Linux user aiops", "az as cm-ai-ops", "Ran new-demo-seed.ps1: seed.bicep at subscription scope")
+}
+
+Boundary(sub, "Subscription Jeffrey MVP Azure subscription 7-25--7-27 (centralus)") {
+  Boundary(rgn, "rg-adameve-nonprod") {
+    ContainerDb(acr, "acradamevenqcmgf", "Container Registry, Basic", "Images adameve/web:<version>", $tags="new")
+    ContainerDb(tfstate, "stadamevetfnqcmgf", "Storage account", "Terraform state of octopus/ (container tfstate)", $tags="new")
+    Container(id_plan, "id-adameve-plan", "managed identity", "Reader on both groups: what-if previews and drift", $tags="new")
+    Container(id_cfg, "id-adameve-octopus-config", "managed identity", "Storage Blob Data Contributor on the state account", $tags="new")
+    Container(id_push, "id-adameve-acr-push", "managed identity", "AcrPush on the registry", $tags="new")
+    Container(id_dn, "id-adameve-deploy-nonprod", "managed identity", "Owner of rg-adameve-nonprod: applies the stacks of tdd", $tags="new")
+    Container(id_apps_n, "Runtime identities", "managed identities", "id-adameve-tdd-app: AcrPull", $tags="new")
+  }
+  Boundary(rgp, "rg-adameve-prod") {
+    Container(id_dp, "id-adameve-deploy-prod", "managed identity", "Owner of rg-adameve-prod: applies the stacks of prod", $tags="new")
+    Container(id_apps_p, "Runtime identities", "managed identities", "id-adameve-prod-app: AcrPull", $tags="new")
+  }
+}
+
+Boundary(gh, "GitHub org clearmeasure-aisf-sample-apps") {
+  Container(sysrepo, "adameve-system", "environments azure-read, octopus", $tags="planned")
+  Container(apprepo, "adameve-app", "environment release", $tags="planned")
+}
+
+Boundary(octo, "Octopus space Adam and woman in the garden of Eden") {
+  Container(projects, "Projects adameve-system, adameve-web", "deployments per environment", "OIDC subjects space:adam-and-woman-in-the-garden-of-eden:project:<project>:environment:<env>", $tags="planned")
+}
+
+Rel(aiops, sub, "deployment seed-adameve", "Owner", $tags="new")
+Rel(sysrepo, id_plan, "federated: environment azure-read", $tags="planned")
+Rel(sysrepo, id_cfg, "federated: environment octopus", $tags="planned")
+Rel(apprepo, id_push, "federated: environment release", $tags="planned")
+Rel(projects, id_dn, "federated: nonprod environments", $tags="planned")
+Rel(projects, id_dp, "federated: prod environments", $tags="planned")
+Rel(id_cfg, tfstate, "state", $tags="new")
+Rel(id_push, acr, "push", $tags="new")
+
+SHOW_LEGEND()
+@enduml

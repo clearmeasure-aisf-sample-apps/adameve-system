@@ -1,0 +1,134 @@
+# Nightly capability checks: scripts/test-capabilities.ps1 proves, read-only, every capability this system claims
+# (one check per CAP-NNN of the demo-environment kit's docs/capabilities.md): rulesets, pins, Octopus processes,
+# deployment stacks, image locks, roles, runbook results, clean deployment logs. It signs in as the system's own
+# identities: Azure as id-<slug>-plan (Reader), Octopus as the system's service account. The GitHub reads (this
+# repository's files, rulesets and branches, and the app repository's rulesets) are made as the system's own GitHub
+# App when system.json names one (github.app; the App's key is the secret SYSTEM_APP_PRIVATE_KEY): a token for this
+# repository with Contents read only, which reads a public app repository as anyone does. Otherwise they go through
+# the stored token OCTOPUS_GITHUB_TOKEN. The result is an issue with label "capability": opened or updated while a
+# check fails, closed when the next run passes. Every system build ends with the same checks (system.yml calls this
+# workflow).
+name: capabilities
+
+on:
+  schedule:
+    - cron: "47 6 * * *"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  capabilities:
+    runs-on: ubuntu-24.04
+    environment: capabilities
+    steps:
+      - uses: actions/checkout@v6.0.1
+
+      # The checks compare Git, Octopus and Azure at rest, so they first wait until no Octopus task runs. They sign in to
+      # Azure only after that: a GitHub OIDC sign-in cannot fetch new tokens (such as the registry's) an hour later.
+      - name: Sign in to Octopus to wait
+        uses: OctopusDeploy/login@v2
+        with:
+          server: ${{ vars.OCTOPUS_URL }}
+          service_account_id: ${{ vars.OCTOPUS_SERVICE_ACCOUNT_ID }}
+
+      - name: Wait until Octopus is quiet
+        shell: pwsh
+        run: ./scripts/test-capabilities.ps1 -WaitOnly -WaitMinutes 50
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign in to Octopus
+        uses: OctopusDeploy/login@v2
+        with:
+          server: ${{ vars.OCTOPUS_URL }}
+          service_account_id: ${{ vars.OCTOPUS_SERVICE_ACCOUNT_ID }}
+
+      # A system.json that names a GitHub App in part, or names one whose key is not stored, stops the run: nothing
+      # falls back to the stored token.
+      - name: Which GitHub identity
+        id: identity
+        env:
+          STORES_APP_KEY: ${{ secrets.SYSTEM_APP_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          app=$(jq -c '.github.app // null' system.json)
+          if [ "$(jq -r 'type' <<<"$app")" = "null" ]; then
+            echo "GitHub identity: the stored token OCTOPUS_GITHUB_TOKEN (system.json names no GitHub App)"
+            echo "client-id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # An App that is named in part is a system that does not work: Octopus would use the App (it reads the ids,
+          # not the client id) while this run used the stored token. The run stops, and nothing falls back.
+          back="Nothing falls back to the stored token: complete github.app, or take it out of system.json."
+          if [ "$(jq -r 'type' <<<"$app")" != "object" ]; then
+            echo "FAIL system.json github.app is not an object (id, slug, clientId, installationId). $back"
+            exit 1
+          fi
+          missing=$(jq -r '. as $named | [("id", "slug", "clientId", "installationId") | select(($named[.] // "" | tostring) == "")] | join(", ")' <<<"$app")
+          if [ -n "$missing" ]; then
+            echo "FAIL system.json names a GitHub App (github.app) without $missing: the App is configured in part. $back"
+            exit 1
+          fi
+          if [ "$STORES_APP_KEY" != "true" ]; then
+            slug=$(jq -r '.slug' <<<"$app")
+            echo "FAIL system.json names the GitHub App $slug, and its key is not stored here (secret SYSTEM_APP_PRIVATE_KEY). Nothing falls back."
+            exit 1
+          fi
+          echo "GitHub identity: the system's App $(jq -r '.slug' <<<"$app") (id $(jq -r '.id' <<<"$app")), named by system.json github.app"
+          echo "client-id=$(jq -r '.clientId' <<<"$app")" >> "$GITHUB_OUTPUT"
+
+      - name: Token of the system's App
+        id: app
+        if: steps.identity.outputs.client-id != ''
+        # By commit, not by tag: the action is handed a private key. The commit is the one tag v3.2.0 names.
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ steps.identity.outputs.client-id }}
+          private-key: ${{ secrets.SYSTEM_APP_PRIVATE_KEY }}
+          permission-contents: read
+
+      - name: Prove every capability
+        id: checks
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.OCTOPUS_GITHUB_TOKEN }}
+        run: |
+          ./scripts/test-capabilities.ps1 -WaitMinutes 40 *>&1 | Tee-Object -FilePath "${{ runner.temp }}/capabilities.txt"
+          exit $LASTEXITCODE
+
+      - name: Report failed capabilities as an issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.checks.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          report="${{ runner.temp }}/capabilities.txt"
+          touch "$report"
+          { echo '```'; cat "$report"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          gh label create capability --color B60205 --description "A capability of the system is not proven" --force >/dev/null
+          issue=$(gh issue list --label capability --state open --json number --jq '.[0].number // empty')
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "All capabilities proven on $(date -u +%F) ($RUN_URL)."
+            fi
+            exit 0
+          fi
+          intro="The nightly capability checks failed ($RUN_URL). Each FAIL line names the capability (CAP-NNN in the kit's docs/capabilities.md) and what was found."
+          body=$(printf '%s\n\n```\n%s\n```\n' "$intro" "$(grep -E '^(FAIL|[0-9]+ of)' "$report" || cat "$report")")
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --title "Capabilities not proven" --label capability --body "$body"
+          fi
+          exit 1

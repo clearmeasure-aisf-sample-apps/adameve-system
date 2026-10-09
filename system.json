@@ -1,0 +1,97 @@
+{
+  "system": {
+    "slug": "adameve",
+    "name": "Adam and woman in the garden of Eden",
+    "location": "centralus",
+    "githubOrg": "clearmeasure-aisf-sample-apps",
+    "repository": "adameve-system"
+  },
+  "azure": {
+    "tenantId": "40645332-2e20-4bca-882c-b2706f93ce44",
+    "subscriptionId": "4a4dfa6d-d434-4b9e-8a88-63bbf61cfb69",
+    "resourceGroups": {
+      "nonprod": "rg-adameve-nonprod",
+      "prod": "rg-adameve-prod"
+    },
+    "registry": {
+      "loginServer": "acradamevenqcmgf.azurecr.io",
+      "name": "acradamevenqcmgf"
+    },
+    "terraformState": {
+      "container": "tfstate",
+      "resourceGroup": "rg-adameve-nonprod",
+      "storageAccount": "stadamevetfnqcmgf"
+    },
+    "identities": {
+      "acrPush": {
+        "clientId": "e987bbd1-d326-4e38-919b-c65a351ca232",
+        "name": "id-adameve-acr-push",
+        "principalId": "85ad1f92-c5f0-43d7-88e5-4fc6aa0a7a19"
+      },
+      "apps": [
+        {
+          "clientId": "3c86f217-4b27-4858-b623-852177fb3ce3",
+          "environment": "tdd",
+          "name": "id-adameve-tdd-app",
+          "principalId": "1b50ba29-d47a-4d7d-9fd2-0b3e2b7a43c9",
+          "resourceId": "/subscriptions/4a4dfa6d-d434-4b9e-8a88-63bbf61cfb69/resourceGroups/rg-adameve-nonprod/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-adameve-tdd-app"
+        },
+        {
+          "clientId": "18763ce9-2bce-493c-a070-8314508af770",
+          "environment": "prod",
+          "name": "id-adameve-prod-app",
+          "principalId": "6a982460-39a7-4974-bd5d-3df2ea86ff36",
+          "resourceId": "/subscriptions/4a4dfa6d-d434-4b9e-8a88-63bbf61cfb69/resourceGroups/rg-adameve-prod/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-adameve-prod-app"
+        }
+      ],
+      "deploy": {
+        "nonprod": {
+          "clientId": "8b047915-b343-41ea-bb33-e42f340ba1a2",
+          "name": "id-adameve-deploy-nonprod",
+          "principalId": "c0b20053-5c76-4f14-8c99-d68e0ce94d7f"
+        },
+        "prod": {
+          "clientId": "b7c43fe2-845e-46a4-bdcc-90c2e251e8d7",
+          "name": "id-adameve-deploy-prod",
+          "principalId": "567ac762-b9f5-4429-aa20-11cf25df70a2"
+        }
+      },
+      "octopusConfig": {
+        "clientId": "c8ee923c-dbfc-4085-9d6b-7341ff1e83de",
+        "name": "id-adameve-octopus-config",
+        "principalId": "9542440b-33a9-4779-a098-3cbabce69366"
+      },
+      "plan": {
+        "clientId": "2c8aa15f-ed5b-4695-b079-915cc570109e",
+        "name": "id-adameve-plan",
+        "principalId": "cf794d5a-6a72-4ba1-af60-8fd820fa2d40"
+      }
+    }
+  },
+  "octopus": {
+    "url": "https://clearmeasure.octopus.app",
+    "spaceId": "Spaces-395",
+    "spaceSlug": "adam-and-woman-in-the-garden-of-eden",
+    "serviceAccountId": "e2f51e0d-acc0-44f3-8e98-09d7f4e9fee9",
+    "approvers": [],
+    "operator": "ai-ops"
+  },
+  "deployables": [
+    {
+      "name": "web",
+      "repository": "adameve-app",
+      "hosting": "own",
+      "port": 8080,
+      "healthPath": "/_healthcheck"
+    }
+  ],
+  "environments": [
+    {
+      "name": "tdd",
+      "tier": "nonprod",
+      "capabilities": [
+        "baseline"
+      ]
+    }
+  ]
+}
