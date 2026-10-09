@@ -99,7 +99,8 @@
       "name": "dashboard",
       "repository": "adameve-dashboard",
       "hosting": "staticwebapp",
-      "healthPath": "/"
+      "healthPath": "/",
+      "buildPath": "/build-facts.json"
     }
   ],
   "environments": [
