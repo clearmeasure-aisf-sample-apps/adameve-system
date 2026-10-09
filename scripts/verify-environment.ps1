@@ -14,6 +14,16 @@
     provisioning) fails the step at once, with the container's last console lines. A static site (hosting
     "staticwebapp") has no revision and no plan to ask: only its URL is polled.
 
+    This is adameve's own version of the kit's file (fleet.ownedTemplates of its registry file, Jeffrey's decision of
+    2026-10-09): for this system a static site is the static website of a storage account
+    (infra/modules/staticwebapp.bicep), and one thing differs from the kit's file. A new Static Web App answers 200
+    with the platform's own page before its first release; a storage account's website is switched on by the first
+    release (Azure Resource Manager has no property for it) and answers 404 until then. "Verify environment" (the
+    system's project, which checks every deployable) therefore passes over a static site that has had no release:
+    one that answers 404 and whose account has no container $web yet, which only switching the website on creates.
+    From its first release on, the site must answer 200 like any other, and "Verify deployable" of the site's own
+    project (Deployable.Name) always asks for 200.
+
     A deployable that brings its own runtime (hosting "own") is not in the stack and verifies itself, in its own
     project (scripts/invoke-application.ps1). "Verify environment" therefore passes over a stack that lists no
     deployable where the system has such an application (variable System.OwnDeployables) and the stack is to create
@@ -124,6 +134,18 @@ function Write-RevisionLog {
     @($lines) | ForEach-Object { Write-Host "  $_" }
 }
 
+function Test-SiteAwaitsFirstRelease {
+    # adameve: whether a static site is a storage account no release was ever deployed to. Switching the account's
+    # static website on creates its container $web, and only "Update deployable" of the site's project does that, so
+    # an account without that container has had no release. Read from Azure Resource Manager, as the deploy identity.
+    param([Parameter(Mandatory)] [string] $Account)
+    $PSNativeCommandUseErrorActionPreference = $false
+    $containers = @(az storage container-rm list --storage-account $Account --resource-group $resourceGroup --query '[].name' --only-show-errors --output tsv 2>$null | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $listed = $LASTEXITCODE -eq 0
+    $PSNativeCommandUseErrorActionPreference = $true
+    return $listed -and $containers -cnotcontains '$web'
+}
+
 $failed = 0
 foreach ($deployable in $deployables) {
     # Only a container app has one: empty for App Service and for a static site.
@@ -140,6 +162,12 @@ foreach ($deployable in $deployables) {
             $status = 0
         }
         if ($status -eq 200) {
+            break
+        }
+        # adameve: a static site on a storage account answers 404 until its first release switched its website on.
+        # Only "Verify environment" passes over it; the site's own project asks for 200.
+        if ($status -eq 404 -and -not $only -and [string] $deployable['hosting'] -eq 'staticwebapp' -and $deployable['staticSite'] -and (Test-SiteAwaitsFirstRelease -Account ([string] $deployable.staticSite))) {
+            $status = -2
             break
         }
         # What the platform says about an app that does not answer: the site for App Service, the revision for a
@@ -160,6 +188,9 @@ foreach ($deployable in $deployables) {
     }
     if ($status -eq 200) {
         Write-Highlight "PASS $($deployable.name) in ${environmentName}$(if ($deployable['role'] -eq 'standby') { " (standby, $($deployable.region))" }): $uri"
+    }
+    elseif ($status -eq -2) {
+        Write-Highlight "PASS $($deployable.name) in ${environmentName}: storage account $($deployable.staticSite) exists and no release was deployed to it yet, so $uri answers 404 until the first release of $slug-$($deployable.name) switches its static website on"
     }
     elseif ($status -eq -1) {
         $failed++
