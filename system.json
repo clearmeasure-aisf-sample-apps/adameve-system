@@ -100,7 +100,10 @@
       "repository": "adameve-dashboard",
       "hosting": "staticwebapp",
       "healthPath": "/",
-      "buildPath": "/build-facts.json"
+      "buildPath": "/build-facts.json",
+      "environments": [
+        "tdd"
+      ]
     }
   ],
   "environments": [
