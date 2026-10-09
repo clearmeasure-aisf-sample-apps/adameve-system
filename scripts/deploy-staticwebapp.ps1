@@ -152,7 +152,7 @@ function Invoke-SiteStorage {
         $code = $LASTEXITCODE
         $PSNativeCommandUseErrorActionPreference = $true
         if ($code -eq 0) { return $output }
-        $refused = @($output | Where-Object { $_ -match 'AuthorizationPermissionMismatch|AuthorizationFailure|not authorized to perform this operation' }).Count -gt 0
+        $refused = @($output | Where-Object { $_ -match 'AuthorizationPermissionMismatch|AuthorizationFailure|not authorized to perform this operation|do not have the required permissions' }).Count -gt 0
         if (-not $refused -or (Get-Date) -gt $deadline) {
             $output | Where-Object { $_.Trim() } | ForEach-Object { Write-Host "  $_" }
             Fail-Step "The Azure CLI ended with exit code $code while it tried to ${What}; its output is above."
@@ -1375,7 +1375,9 @@ try {
     # index.html also for an address that is not there: the page is one document, and its views are fragments (#).
     Invoke-SiteStorage -What "switch the static website of $staticSite on" -Arguments @('blob', 'service-properties', 'update', '--account-name', $staticSite, '--static-website', 'true', '--index-document', 'index.html', '--404-document', 'index.html', '--output', 'none') | Out-Null
     Invoke-SiteStorage -What "write the site into $staticSite" -Arguments @('blob', 'upload-batch', '--account-name', $staticSite, '--destination', '$web', '--source', $stage, '--overwrite', 'true', '--content-cache-control', 'no-cache', '--no-progress', '--output', 'none') | Out-Null
-    $blobs = @((Invoke-SiteStorage -What "list the files of $staticSite" -Arguments @('blob', 'list', '--account-name', $staticSite, '--container-name', '$web', '--num-results', '*', '--query', '[].name', '--output', 'json')) -join "`n" | ConvertFrom-Json)
+    # The list holds up to 5,000 names, the service's page: far more than the site's files. No --num-results '*':
+    # PowerShell on Linux expands a lone * into the file names of the working directory before the CLI sees it.
+    $blobs = @((Invoke-SiteStorage -What "list the files of $staticSite" -Arguments @('blob', 'list', '--account-name', $staticSite, '--container-name', '$web', '--query', '[].name', '--output', 'json')) -join "`n" | ConvertFrom-Json)
     $left = @($blobs | Where-Object { $files -cnotcontains $_ })
     foreach ($blob in $left) {
         Invoke-SiteStorage -What "remove $blob from $staticSite" -Arguments @('blob', 'delete', '--account-name', $staticSite, '--container-name', '$web', '--name', $blob, '--output', 'none') | Out-Null
