@@ -1,0 +1,15 @@
+{
+  "web": {
+    "healthPath": "/_healthcheck",
+    "alivePath": "/alive",
+    "versionPath": "/_version",
+    "nodes": [
+      {
+        "name": "ca-adameve-prod-web",
+        "region": "centralus",
+        "role": "primary",
+        "url": "https://ca-adameve-prod-web.livelyplant-01a56d5d.centralus.azurecontainerapps.io"
+      }
+    ]
+  }
+}
