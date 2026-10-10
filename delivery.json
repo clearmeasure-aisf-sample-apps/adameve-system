@@ -1,0 +1,146 @@
+{
+  "generated": "2026-10-10T17:43:57Z",
+  "environments": [
+    {
+      "name": "tdd",
+      "deployables": [
+        {
+          "name": "web",
+          "version": "1.0.25",
+          "deployedAt": "2026-10-10T10:35:37Z",
+          "signedOffBy": null,
+          "reason": null,
+          "lastPersonSignOff": null,
+          "commit": "aa9c992bdef0dd3a43caeb72866f50a100f926e5",
+          "commitAt": "2026-10-10T09:19:18Z",
+          "leadTimeHours": 1.3,
+          "behindFirst": {
+            "versions": 0,
+            "days": 0
+          },
+          "deploymentsLast7Days": 9,
+          "failedLast7Days": 0,
+          "releaseUrl": "https://clearmeasure.octopus.app/app#/Spaces-395/projects/adameve-web/deployments/releases/1.0.25"
+        },
+        {
+          "name": "dashboard",
+          "version": "1.0.2",
+          "deployedAt": "2026-10-09T07:10:07Z",
+          "signedOffBy": null,
+          "reason": null,
+          "lastPersonSignOff": null,
+          "commit": "4bbb5abecb505740de6ecfc64cbc3ce10d476db9",
+          "commitAt": "2026-10-09T06:05:43Z",
+          "leadTimeHours": 1.1,
+          "behindFirst": {
+            "versions": 0,
+            "days": 0
+          },
+          "deploymentsLast7Days": 2,
+          "failedLast7Days": 1,
+          "releaseUrl": "https://clearmeasure.octopus.app/app#/Spaces-395/projects/adameve-dashboard/deployments/releases/1.0.2"
+        },
+        {
+          "name": "system",
+          "version": "1.0.7",
+          "deployedAt": "2026-10-09T16:35:39Z",
+          "signedOffBy": null,
+          "reason": null,
+          "lastPersonSignOff": null,
+          "commit": "948bef6bdb4e66cbd647a0c15dac27ab01faf67f",
+          "commitAt": "2026-10-09T16:31:18Z",
+          "leadTimeHours": 0.1,
+          "behindFirst": {
+            "versions": 0,
+            "days": 0
+          },
+          "deploymentsLast7Days": 7,
+          "failedLast7Days": 0,
+          "releaseUrl": "https://clearmeasure.octopus.app/app#/Spaces-395/projects/adameve-system/deployments/releases/1.0.7"
+        }
+      ],
+      "health": {
+        "last24Hours": {
+          "reports": 24,
+          "healthy": 24
+        },
+        "last7Days": {
+          "reports": 37,
+          "healthy": 37
+        },
+        "lastFailure": null
+      }
+    },
+    {
+      "name": "prod",
+      "deployables": [
+        {
+          "name": "web",
+          "version": "1.0.25",
+          "deployedAt": "2026-10-10T16:22:41Z",
+          "signedOffBy": "ai-ops",
+          "reason": "Title screen and creation days (S4), the Three.js renderer with a perspective camera, figures without leaf coverings and the art pass, to prod: Jeffrey Palermo saw them in tdd and answered on 2026-10-10: All good, then Do it, to the question whether to promote. Release 1.0.25 passed its build and is verified in tdd.",
+          "lastPersonSignOff": null,
+          "commit": "aa9c992bdef0dd3a43caeb72866f50a100f926e5",
+          "commitAt": "2026-10-10T09:19:18Z",
+          "leadTimeHours": 7.1,
+          "behindFirst": {
+            "versions": 0,
+            "days": 0
+          },
+          "deploymentsLast7Days": 3,
+          "failedLast7Days": 0,
+          "releaseUrl": "https://clearmeasure.octopus.app/app#/Spaces-395/projects/adameve-web/deployments/releases/1.0.25"
+        },
+        {
+          "name": "dashboard",
+          "version": null,
+          "deployedAt": null,
+          "signedOffBy": null,
+          "reason": null,
+          "lastPersonSignOff": null,
+          "commit": null,
+          "commitAt": null,
+          "leadTimeHours": null,
+          "behindFirst": {
+            "versions": null,
+            "days": null
+          },
+          "deploymentsLast7Days": 0,
+          "failedLast7Days": 0,
+          "releaseUrl": null
+        },
+        {
+          "name": "system",
+          "version": "1.0.7",
+          "deployedAt": "2026-10-09T16:43:06Z",
+          "signedOffBy": "ai-ops",
+          "reason": "Prod follows tdd: the kit template sync (capability checks of an adopted application, kit pull request 81); it changes no resource. The system run that made the release is green, capabilities included.",
+          "lastPersonSignOff": null,
+          "commit": "948bef6bdb4e66cbd647a0c15dac27ab01faf67f",
+          "commitAt": "2026-10-09T16:31:18Z",
+          "leadTimeHours": 0.2,
+          "behindFirst": {
+            "versions": 0,
+            "days": 0
+          },
+          "deploymentsLast7Days": 3,
+          "failedLast7Days": 0,
+          "releaseUrl": "https://clearmeasure.octopus.app/app#/Spaces-395/projects/adameve-system/deployments/releases/1.0.7"
+        }
+      ],
+      "health": {
+        "last24Hours": {
+          "reports": 24,
+          "healthy": 24
+        },
+        "last7Days": {
+          "reports": 36,
+          "healthy": 36
+        },
+        "lastFailure": null
+      }
+    }
+  ],
+  "failover": null
+}
