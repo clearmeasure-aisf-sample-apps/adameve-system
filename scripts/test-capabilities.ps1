@@ -933,7 +933,22 @@ $checks = [ordered] @{
             $task = Invoke-Octopus "/api/tasks/$(([string] $entry['url']) -replace '^.*/tasks/', '')"
             Assert-That (-not $task.IsCompleted -or [datetimeoffset] $task.CompletedTime -gt $limit) "deployments.json calls $($entry['project']) $($entry['release']) to $($entry['environment']) $($entry['state']); in Octopus it ended over an hour ago ($($task.Id)): run workflow deployments"
         }
-        "deployments.json on branch deployments: $($inFlight.Count) in flight, as in Octopus; $($listed.Count - $inFlight.Count) ended in the last half hour"
+        # What the file says in words (a file from before these lists has none, and is checked as before): a
+        # deployment that waits says what for, every last deployment has its result and its task, every freeze its
+        # name and its end, and what could not be read is named, not left out silently.
+        $says = ''
+        if ($published.ContainsKey('missing')) {
+            $waits = @($inFlight | Where-Object { [string] $_['state'] -eq 'waiting' -and -not ($_['waitsFor'] -and $_['waitsFor']['kind']) })
+            Assert-That ($waits.Count -eq 0) "deployments.json has $($waits.Count) deployment(s) that wait for a person without saying what for (waitsFor.kind)"
+            $recent = @($published['recent'] | Where-Object { $_ })
+            $unsaid = @($recent | Where-Object { 'succeeded', 'failed', 'canceled' -notcontains [string] $_['result'] -or -not $_['project'] -or -not $_['environment'] -or -not $_['finished'] -or [string] $_['url'] -notmatch '/tasks/ServerTasks-\d+$' })
+            Assert-That ($unsaid.Count -eq 0) "deployments.json has $($unsaid.Count) entr(ies) of recent without a project, an environment, a result, the time it ended or its task"
+            $freezes = @($published['freezes'] | Where-Object { $_ })
+            Assert-That (@($freezes | Where-Object { -not $_['name'] -or -not $_['to'] }).Count -eq 0) 'deployments.json has a deployment freeze without a name or the time it ends'
+            $notRead = @($published['missing'] | Where-Object { $_ })
+            $says = "; the last deployment of $($recent.Count) project(s) and environment(s), $($freezes.Count) deployment freeze(s)$(if ($notRead.Count -gt 0) { "; not read: $($notRead -join ', ')" })"
+        }
+        "deployments.json on branch deployments: $($inFlight.Count) in flight, as in Octopus; $($listed.Count - $inFlight.Count) ended in the last half hour$says"
     }
     'CAP-080' = { $files = @(gh api "repos/$systemRepo/contents/docs/architecture" --jq '.[].name'); $missing = @($files | Where-Object { $_ -like '*.puml' -and $files -notcontains ($_ -replace '\.puml$', '.png') }); Assert-That ($missing.Count -eq 0 -and $files.Count -gt 0) "not rendered: $missing"; "$(@($files | Where-Object { $_ -like '*.png' }).Count) diagrams rendered" }
     'CAP-081' = {
