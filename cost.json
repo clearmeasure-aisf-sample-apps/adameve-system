@@ -1,0 +1,42 @@
+{
+  "generated": "2026-11-21T09:41:33Z",
+  "currency": "USD",
+  "asOf": "2026-11-20",
+  "system": {
+    "yesterday": 0.29,
+    "last7Days": 2.57,
+    "monthToDate": 8.2
+  },
+  "environments": [
+    {
+      "name": "tdd",
+      "yesterday": 0.0,
+      "last7Days": 0.0,
+      "monthToDate": 0.0,
+      "topServices": []
+    },
+    {
+      "name": "prod",
+      "yesterday": 0.0,
+      "last7Days": 0.0,
+      "monthToDate": 0.0,
+      "topServices": []
+    },
+    {
+      "name": "shared",
+      "yesterday": 0.29,
+      "last7Days": 2.57,
+      "monthToDate": 8.2,
+      "topServices": [
+        {
+          "name": "Azure Container Apps",
+          "monthToDate": 4.86
+        },
+        {
+          "name": "Container Registry",
+          "monthToDate": 3.33
+        }
+      ]
+    }
+  ]
+}
